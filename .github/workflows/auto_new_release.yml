@@ -2,8 +2,8 @@ name: PHP Semantic Release
 
 on:
   push:
-    branches: [main, master]
-
+    branches:
+      - main
 jobs:
   release:
     runs-on: ubuntu-latest
