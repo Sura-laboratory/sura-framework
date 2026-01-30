@@ -14,6 +14,7 @@ use Error;
 
 /**
  * Простой роутер для сопоставления URI с обработчиками.
+ * Добавлено кэширование для ускорения поиска маршрутов.
  *
  * Поддерживает:
  * - регистрация правил маршрутов (строка => обработчик)
@@ -22,6 +23,13 @@ use Error;
  */
 class Router
 {
+    /**
+     * Кэш для результатов сопоставления маршрутов.
+     *
+     * @var array<string, array{handler: string|callable|null, params: array}>
+     */
+    private static array $cache = [];
+
     /**
      * Карта маршрутов: ключ — шаблон маршрута, значение — обработчик (string|callable).
      *
@@ -222,11 +230,24 @@ class Router
     public function isFound(): bool
     {
         $uri_data = self::getRequestUri();
-        /**
-         *  if URI equals to route
-         */
+
+        // Проверка наличия в кэше
+        if (isset(self::$cache[$uri_data])) {
+            $cached = self::$cache[$uri_data];
+            self::$requestHandler = $cached['handler'];
+            self::$params = $cached['params'];
+            return true;
+        }
+
+        // Проверка точного совпадения маршрута
         if (isset(self::$routes[$uri_data])) {
             self::$requestHandler = self::$routes[$uri_data];
+            self::$params = [];
+            // Сохранение в кэш
+            self::$cache[$uri_data] = [
+                'handler' => self::$requestHandler,
+                'params' => self::$params
+            ];
             return true;
         }
 
@@ -245,6 +266,11 @@ class Router
             if (preg_match('#^' . $route . '$#', $uri_data, $matches)) {
                 self::$requestHandler = $handler;
                 self::$params = array_slice($matches, 1);
+                // Сохранение в кэш
+                self::$cache[$uri_data] = [
+                    'handler' => self::$requestHandler,
+                    'params' => self::$params
+                ];
                 return true;
             }
         }

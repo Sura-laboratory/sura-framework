@@ -84,28 +84,23 @@ class Filesystem implements FilesystemInterface
     /**
      * size dir
      * @param string $directory
-     * @return bool|int
+     * @return int
      */
-    public static function dirSize(string $directory): bool|int
+    public static function dirSize(string $directory): int
     {
         if (!is_dir($directory)) {
-            return -1;
+            return 0;
         }
+
         $size = 0;
-        if ($DIR = opendir($directory)) {
-            while (($dir_file = readdir($DIR)) !== false) {
-                if (is_link($directory . '/' . $dir_file) || $dir_file === '.' || $dir_file === '..') {
-                    continue;
-                }
-                if (is_file($directory . '/' . $dir_file)) {
-                    $size += filesize($directory . '/' . $dir_file);
-                } elseif (is_dir($directory . '/' . $dir_file)) {
-                    $dirSize = self::dirSize($directory . '/' . $dir_file);
-                        $size += $dirSize;
-                }
+        $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory, \FilesystemIterator::SKIP_DOTS));
+
+        foreach ($iterator as $item) {
+            if ($item->isFile()) {
+                $size += $item->getSize();
             }
-            closedir($DIR);
         }
+
         return $size;
     }
 
@@ -116,10 +111,15 @@ class Filesystem implements FilesystemInterface
      */
     public static function humanFileSize(int $bytes, int $decimals = 1): string
     {
-        $sizes = 'BKMGTP';
-        $factor = (int) floor(( strlen((string)$bytes) - 1 ) / 3);
-        $unit = $sizes[$factor] ?? '';
-        return sprintf("%.{$decimals}f", $bytes / (1000 ** $factor)) .
-            ( $unit === 'B' ? $unit : $unit . 'B' );
+        if ($bytes === 0) {
+            return '0B';
+        }
+
+        $unit = (int) floor(log($bytes, 1024));
+        $units = 'BKMGTP';
+        $prefix = $units[$unit] ?? 'B';
+        $size = $bytes / (1024 ** $unit);
+
+        return sprintf("%.{$decimals}f", $size) . ($prefix === 'B' ? 'B' : "{$prefix}B");
     }
 }
