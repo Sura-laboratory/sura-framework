@@ -20,7 +20,7 @@
     "php-coveralls/php-coveralls": "^2.1",
     "phpstan/phpstan": "^1.5",
     "jetbrains/phpstorm-attributes": "1.0",
-    "squizlabs/php_codesniffer": "^3.6",
+    "squizlabs/php_codesniffer": "^3.6 || ^4.0",
     "ext-xdebug": "*"
   },
   "scripts": {
