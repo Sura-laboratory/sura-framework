@@ -1,4 +1,4 @@
-name: Semantic PHP Release
+name: PHP Release 
 
 on:
   push:
