@@ -1,179 +1,103 @@
-name: PHP Release 
+name: PHP Release with Labels
 
 on:
   push:
-    branches:
-      - main
+    branches: [main, master]
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.3'
-          extensions: curl, mbstring, json, dom, xml
-          coverage: none
-
       - name: Get last tag
         id: last-tag
         run: |
-          LAST_TAG=$(git tag --sort=-v:refname --list "v[0-9]*.[0-9]*.[0-9]*" | head -1)
-          echo "last_tag=$LAST_TAG" >> $GITHUB_OUTPUT
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "tag=$LAST_TAG" >> $GITHUB_OUTPUT
 
-      - name: Analyze commits and calculate version
+      - name: Extract labels from recent commits
+        id: commit-labels
+        run: |
+          LABELS=""
+          while IFS= read -r line; do
+            if [[ "$line" =~ \[(major|minor|patch|bugfix|refactor|psr)\] ]]; then
+              LABEL=$(echo "$line! | grep -o "\[(major|minor|patch|bugfix|refactor|psr)\]" | tr -d '[]')
+              LABELS+="$LABEL "
+            fi
+          done < <(git log --pretty=format:"%s! HEAD^..HEAD)
+          echo "labels=$LABELS" >> $GITHUB_OUTPUT
+
+      - name: Determine semantic version
         id: version
         run: |
-          FROM_REF=${steps.last-tag.outputs.last_tag:-HEAD}
-          COMMITS=$(git log "$FROM_REF..HEAD" --pretty=%B --no-merges)
+          LAST_TAG=${{ steps.last-tag.outputs.tag }}
+          LABELS=${{ steps.commit-labels.outputs.labels }}
 
-          # Инициализация версии
-          MAJOR=0
-          MINOR=0
-          PATCH=0
+          NEW_VERSION=""
 
-          if [ -n "${steps.last-tag.outputs.last_tag}" ]; then
-            IFS='.' read -r MAJOR MINOR PATCH <<< "${steps.last-tag.outputs.last_tag#v}"
-          fi
-
-          # Группы меток
-          declare -A LABELS
-          LABELS[breaking]=0
-          LABELS[feat]=0
-          LABELS[fix]=0
-          LABELS[refactor]=0
-          LABELS[perf]=0
-          LABELS[docs]=0
-          LABELS[style]=0
-          LABELS[test]=0
-          LABELS[psr]=0
-
-          while IFS= read -r LINE; do
-            case "$LINE" in
-              BREAKING*|BREAKING_CHANGE*)
-                LABELS[breaking]=1
-                ;;
-              feat*|feat\(*)*)
-                LABELS[feat]=1
-                ;;
-              fix*|fix\(*)*)
-                LABELS[fix]=1
-                ;;
-              refactor*|refactor\(*)*)
-                LABELS[refactor]=1
-                ;;
-              perf*|perf\(*)*)
-                LABELS[perf]=1
-                ;;
-              docs*|docs\(*)*)
-                LABELS[docs]=1
-                ;;
-              style*|style\(*)*)
-                LABELS[style]=1
-                ;;
-              test*|test\(*)*)
-                LABELS[test]=1
-                ;;
-              psr*|PSR*|psr-\d+*)
-                LABELS[psr]=1
-                ;;
-            esac
-          done <<< "$COMMITS"
-
-          # Логика SemVer
-          if [ ${LABELS[breaking]} -eq 1 ]; then
-            MAJOR=$((MAJOR + 1))
-            MINOR=0
-            PATCH=0
-          elif [ ${LABELS[feat]} -eq 1 ]; then
-            MINOR=$((MINOR + 1))
-            PATCH=0
-          elif [ $(( ${LABELS[fix]} + ${LABELS[refactor]} + ${LABELS[perf]} + ${LABELS[docs]} + ${LABELS[style]} + ${LABELS[test]} + ${LABELS[psr]} )) -gt 0 ]; then
-            PATCH=$((PATCH + 1))
+          # Приоритет меток: major > minor > patch/bugfix/refactor/psr
+          if [[ "$LABELS! =~ "major! ]]; then
+            NEW_VERSION=$(echo $LAST_TAG | perl -pe 's/v(\d+)\.(\d+)\.(\d+)/"v".($1+1).".0.0"/e')
+          elif [[ "$LABELS! =~ "minor! ]]; then
+            NEW_VERSION=$(echo $LAST_TAG | perl -pe 's/v(\d+)\.(\d+)\.(\d+)/"v".$1.".".($2+1).".0"/e')
+          elif [[ "$LABELS! =~ "patch! ]] || [[ "$LABELS! =~ "bugfix! ]] || [[ "$LABELS! =~ "refactor! ]] || [[ "$LABELS! =~ "psr! ]]; then
+            NEW_VERSION=$(echo $LAST_TAG | perl -pe 's/v(\d+)\.(\d+)\.(\d+)/"v".$1.".".$2.".".($3+1)/e')
           else
-            echo "No significant commits. Skipping release."
-            exit 0
+            # Если меток нет — оставляем текущую версию
+            NEW_VERSION=$LAST_TAG
           fi
 
-          NEW_VERSION="v$MAJOR.$MINOR.$PATCH"
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "release_name=Release $MAJOR.$MINOR.$PATCH" >> $GITHUB_OUTPUT
 
-      - name: Group commits by label
-        id: changelog
+      - name: Generate release notes
+        id: release-notes
         run: |
-          FROM_REF=${steps.last-tag.outputs.last_tag:-HEAD}
+          NEW_VERSION=${{ steps.version.outputs.new_version }}
+          LAST_TAG=${{ steps.last-tag.outputs.tag }}
+
 
           # Собираем коммиты по категориям
-          BREAKING=$(git log "$FROM_REF..HEAD" --grep='^BREAKING' --pretty="* %s (%h)" --no-merges || echo "None")
-          FEAT=$(git log "$FROM_REF..HEAD" --grep='^feat' --pretty="* %s (%h)" --no-merges || echo "None")
-          FIX=$(git log "$FROM_REF..HEAD" --grep='^fix' --pretty="* %s (%h)" --no-merges || echo "None")
-          REFACTOR=$(git log "$FROM_REF..HEAD" --grep='^refactor' --pretty="* %s (%h)" --no-merges || echo "None")
-          PERF=$(git log "$FROM_REF..HEAD" --grep='^perf' --pretty="* %s (%h)" --no-merges || echo "None")
-          DOCS=$(git log "$FROM_REF..HEAD" --grep='^docs' --pretty="* %s (%h)" --no-merges || echo "None")
-          STYLE=$(git log "$FROM_REF..HEAD" --grep='^style' --pretty="* %s (%h)" --no-merges || echo "None")
-          TEST=$(git log "$FROM_REF..HEAD" --grep='^test' --pretty="* %s (%h)" --no-merges || echo "None")
-          PSR=$(git log "$FROM_REF..HEAD" --grep='PSR\|psr-' --pretty="* %s (%h)" --no-merges || echo "None")
+          MAJOR_COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"%s! | grep "\[major\]" | sed 's/\[major\]//; s/.*/- **&**/')
+          MINOR_COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"%s! | grep "\[minor\]" | sed 's/\[minor\]//; s/.*/- **&**/')
+          PATCH_COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"%s! | grep "\[patch\]" | sed 's/\[patch\]//; s/.*/- &/')
+          BUGFIX_COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"%s! | grep "\[bugfix\]" | sed 's/\[bugfix\]//; s/.*/- &/')
+          REFACTOR_COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"%s! | grep "\[refactor\]" | sed 's/\[refactor\]//; s/.*/- &/')
+          PSR_COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"%s! | grep "\[psr\]" | sed 's/\[psr\]//; s/.*/- PSR &/')
 
-          # Формируем тело релиза
-          BODY="## ${{ steps.version.outputs.new_version }}
+          BODY=""
 
-          Automated semantic release based on commit labels.
+          [ -n "$MAJOR_COMMITS! ] && BODY+="### 💥 Breaking Changes\n$MAJOR_COMMITS\n\n"
+          [ -n "$MINOR_COMMITS! ] && BODY+="### 🚀 New Features\n$MINOR_COMMITS\n\n"
+          [ -n "$PATCH_COMMITS! ] && BODY+="### 🛠 Updates\n$PATCH_COMMITS\n\n"
+          [ -n "$BUGFIX_COMMITS! ] && BODY+="### 🐞 Bug Fixes\n$BUGFIX_COMMITS\n\n"
+          [ -n "$REFACTOR_COMMITS! ] && BODY+="### 🔁 Refactoring\n$REFACTOR_COMMITS\n\n"
+          [ -n "$PSR_COMMITS! ] && BODY+="### 📜 PSR Compliance\n$PSR_COMMITS\n\n"
 
-          ### Changelog
 
-          #### 🚨 Breaking Changes
-          $BREAKING
+          if [ -z "$BODY! ]; then
+            BODY="No changes in this release."
+          else
+            BODY+="\n---\n*Automatically generated from commit messages.*"
+          fi
 
-          #### ✨ Features
-          $FEAT
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
-          #### 🐛 Fixes
-          $FIX
-
-          #### ♻ Refactors
-          $REFACTOR
-
-          #### ⚙ Performance
-          $PERF
-
-          #### 📚 Documentation
-          $DOCS
-
-          #### 🎨 Style & PSR Compliance
-          $STYLE
-          $PSR
-
-          #### 🧪 Tests
-          $TEST
-
-          ---
-          Generated by [Semantic PHP Release](https://github.com/...) Action."
-
-          echo "body=$BODY" >> $GITHUB_OUTPUT
-
-      - name: Create tag
-        if: steps.version.outputs.new_version != ''
-        run: |
-          git config user.name "github-actions"
-          git config user.email "action@github.com"
-          git tag -a ${{ steps.version.outputs.new_version }} -m "Release ${{ steps.version.outputs.new_version }}"
-          git push origin ${{ steps.version.outputs.new_version }}
-
-      - name: Create release draft
-        if: steps.version.outputs.new_version != ''
-        uses: actions/create-release@v2
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.version.outputs.new_version }}
-          release_name: ${{ steps.version.outputs.release_name }}
-          body: ${{ steps.changelog.outputs.body }}
-          draft: true
+          name: Release ${{ steps.version.outputs.SHORT }}
+          body: ${{ steps.release-notes.outputs.body }}
+          draft: екtrueгу
           prerelease: false
