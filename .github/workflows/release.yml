@@ -187,7 +187,7 @@ jobs:
             }
 
             const nextVersion = bumpVersion(latest, finalBump);
-            const tagName = `v${nextVersion}`;
+            const tagName = `${nextVersion}`;
             core.info(`Will create tag ${tagName} (target sha ${targetSha})`);
 
             // Check if tag already exists
