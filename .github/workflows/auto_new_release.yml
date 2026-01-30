@@ -1,4 +1,4 @@
-name: PHP Release with Labels
+name: PHP Semantic Release
 
 on:
   push:
@@ -11,65 +11,88 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Get last tag
+      - name: Get latest tag
         id: last-tag
         run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
           echo "tag=$LAST_TAG" >> $GITHUB_OUTPUT
 
-      - name: Extract labels from recent commits
-        id: commit-labels
+      - name: Extract labels from commits
+        id: labels
         run: |
-          LABELS=""
-          while IFS= read -r line; do
-            if [[ "$line" =~ \[(major|minor|patch|bugfix|refactor|psr)\] ]]; then
-              LABEL=$(echo "$line! | grep -o "\[(major|minor|patch|bugfix|refactor|psr)\]" | tr -d '[]')
-              LABELS+="$LABEL "
-            fi
-          done < <(git log --pretty=format:"%s! HEAD^..HEAD)
-          echo "labels=$LABELS" >> $GITHUB_OUTPUT
+          # Собираем все коммиты с метками между последним тегом и HEAD
+          COMMITS=$(git log --pretty=format:"%s! ${{ steps.last-tag.outputs.tag }}..HEAD 2>/dev/null || echo "")
+          
+          # Проверяем наличие меток
+          HAS_MAJOR=$(echo "$COMMITS! | grep -q "\[major\]" && echo "true! || echo "")
+          HAS_MINOR=$(echo "$COMMITS! | grep -q "\[minor\]" && echo "true! || echo "")
+          HAS_PATCH=$(echo "$COMMITS! | grep -q "\[patch\]" && echo "true! || echo "")
+          HAS_BUGFIX=$(echo "$COMMITS! | grep -q "\[bugfix\]" && echo "true! || echo "")
+          HAS_REFACTOR=$(echo "$COMMITS! | grep -q "\[refactor\]" && echo "true! || echo "")
+          HAS_PSR=$(echo "$COMMITS! | grep -q "\[psr\]" && echo "true! || echo "")
 
-      - name: Determine semantic version
+          
+          echo "major=$HAS_MAJOR! >> $GITHUB_OUTPUT
+          echo "minor=$HAS_MINOR! >> $GITHUB_OUTPUT
+          echo "patch=$HAS_PATCH! >> $GITHUB_OUTPUT
+          echo "bugfix=$HAS_BUGFIX! >> $GITHUB_OUTPUT
+          echo "refactor=$HAS_REFACTOR! >> $GITHUB_OUTPUT
+          echo "psr=$HAS_PSR! >> $GITHUB_OUTPUT
+
+
+      - name: Calculate new version
         id: version
         run: |
           LAST_TAG=${{ steps.last-tag.outputs.tag }}
-          LABELS=${{ steps.commit-labels.outputs.labels }}
+          MAJOR=${{ steps.labels.outputs.major }}
+          MINOR=${{ steps.labels.outputs.minor }}
+          PATCH=${{ steps.labels.outputs.patch }}
+          BUGFIX=${{ steps.labels.outputs.bugfix }}
+          REFACTOR=${{ steps.labels.outputs.refactor }}
+          PSR=${{ steps.labels.outputs.psr }}
+
 
           NEW_VERSION=""
 
-          # Приоритет меток: major > minor > patch/bugfix/refactor/psr
-          if [[ "$LABELS! =~ "major! ]]; then
-            NEW_VERSION=$(echo $LAST_TAG | perl -pe 's/v(\d+)\.(\d+)\.(\d+)/"v".($1+1).".0.0"/e')
-          elif [[ "$LABELS! =~ "minor! ]]; then
-            NEW_VERSION=$(echo $LAST_TAG | perl -pe 's/v(\d+)\.(\d+)\.(\d+)/"v".$1.".".($2+1).".0"/e')
-          elif [[ "$LABELS! =~ "patch! ]] || [[ "$LABELS! =~ "bugfix! ]] || [[ "$LABELS! =~ "refactor! ]] || [[ "$LABELS! =~ "psr! ]]; then
-            NEW_VERSION=$(echo $LAST_TAG | perl -pe 's/v(\d+)\.(\d+)\.(\d+)/"v".$1.".".$2.".".($3+1)/e')
+          if [[ "$MAJOR! == "true! ]]; then
+            NEW_VERSION=$(echo $LAST_TAG | perl -pe 's/(\d+)\.(\d+)\.(\d+)/($1+1).0.0/e')
+          elif [[ "$MINOR! == "true! ]]; then
+            NEW_VERSION=$(echo $LAST_TAG | perl -pe 's/(\d+)\.(\d+)\.(\d+)/$1.($2+1).0/e')
+          elif [[ "$PATCH! == "true! ]] || [[ "$BUGFIX! == "true! ]] || \
+                 [[ "$REFACTOR! == "true! ]] || [[ "$PSR! == "true! ]]; then
+            NEW_VERSION=$(echo $LAST_TAG | perl -pe 's/(\d+)\.(\d+)\.(\d+)/$1.$2.($3+1)/e')
           else
-            # Если меток нет — оставляем текущую версию
             NEW_VERSION=$LAST_TAG
           fi
 
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "new_version=$NEW_VERSION! >> $GITHUB_OUTPUT
+
 
       - name: Generate release notes
-        id: release-notes
+        id: notes
         run: |
           NEW_VERSION=${{ steps.version.outputs.new_version }}
           LAST_TAG=${{ steps.last-tag.outputs.tag }}
 
+          # Собираем сообщения по категориям
+          MAJOR_COMMITS=$(git log ${{ steps.last-tag.outputs.tag }}..HEAD --pretty=format:"%s! | \
+            grep "\[major\]" | sed 's/\[major\]//; s/.*/- **&**/')
+          MINOR_COMMITS=$(git log ${{ steps.last-tag.outputs.tag }}..HEAD --pretty=format:"%s! | \
+            grep "\[minor\]" | sed 's/\[minor\]//; s/.*/- **&**/')
+          PATCH_COMMITS=$(git log ${{ steps.last-tag.outputs.tag }}..HEAD --pretty=format:"%s! | \
+            grep "\[patch\]" | sed 's/\[patch\]//; s/.*/- &/')
+          BUGFIX_COMMITS=$(git log ${{ steps.last-tag.outputs.tag }}..HEAD --pretty=format:"%s! | \
+            grep "\[bugfix\]" | sed 's/\[bugfix\]//; s/.*/- &/')
+          REFACTOR_COMMITS=$(git log ${{ steps.last-tag.outputs.tag }}..HEAD --pretty=format:"%s! | \
+            grep "\[refactor\]" | sed 's/\[refactor\]//; s/.*/- &/')
+          PSR_COMMITS=$(git log ${{ steps.last-tag.outputs.tag }}..HEAD --pretty=format:"%s! | \
+            grep "\[psr\]" | sed 's/\[psr\]//; s/.*/- PSR &/')
 
-          # Собираем коммиты по категориям
-          MAJOR_COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"%s! | grep "\[major\]" | sed 's/\[major\]//; s/.*/- **&**/')
-          MINOR_COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"%s! | grep "\[minor\]" | sed 's/\[minor\]//; s/.*/- **&**/')
-          PATCH_COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"%s! | grep "\[patch\]" | sed 's/\[patch\]//; s/.*/- &/')
-          BUGFIX_COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"%s! | grep "\[bugfix\]" | sed 's/\[bugfix\]//; s/.*/- &/')
-          REFACTOR_COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"%s! | grep "\[refactor\]" | sed 's/\[refactor\]//; s/.*/- &/')
-          PSR_COMMITS=$(git log $LAST_TAG..HEAD --pretty=format:"%s! | grep "\[psr\]" | sed 's/\[psr\]//; s/.*/- PSR &/')
 
           BODY=""
 
@@ -80,16 +103,16 @@ jobs:
           [ -n "$REFACTOR_COMMITS! ] && BODY+="### 🔁 Refactoring\n$REFACTOR_COMMITS\n\n"
           [ -n "$PSR_COMMITS! ] && BODY+="### 📜 PSR Compliance\n$PSR_COMMITS\n\n"
 
-
           if [ -z "$BODY! ]; then
             BODY="No changes in this release."
           else
             BODY+="\n---\n*Automatically generated from commit messages.*"
           fi
 
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          echo "$BODY" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "body<<EOF! >> $GITHUB_OUTPUT
+          echo "$BODY! >> $GITHUB_OUTPUT
+          echo "EOF! >> $GITHUB_OUTPUT
+
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -97,7 +120,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.version.outputs.new_version }}
-          name: Release ${{ steps.version.outputs.SHORT }}
-          body: ${{ steps.release-notes.outputs.body }}
-          draft: екtrueгу
+          name: Release ${{ steps.version.outputs.new_version }}
+          body: ${{ steps.notes.outputs.body }}
+          draft: true
           prerelease: false
