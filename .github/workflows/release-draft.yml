@@ -3,7 +3,7 @@ name: PHP Release
 on:
   push:
     branches:
-      - main2
+      - main
 
 
 jobs:
