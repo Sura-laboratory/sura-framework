@@ -15,99 +15,31 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Установка Node.js для кастомной конфигурации
+      # Установка Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
 
-      # Установка semantic-release и плагинов
+      # Установка semantic-release
       - name: Install dependencies
         run: |
           npm install --save-dev semantic-release @semantic-release/commit-analyzer @semantic-release/release-notes-generator
 
-      # Создание кастомного конфига с группировкой по типам
-- name: Create release config
-  run: |
-    cat > release.config.js << 'EOL'
-    module.exports = {
-      plugins: [
-        [
-          '@semantic-release/commit-analyzer',
-          {
-            preset: 'conventionalcommits',
-            releaseRules: [
-              // feat → minor
-              { type: 'feat', release: 'minor' },
-              // fix, perf, build → patch
-              { type: 'fix', release: 'patch' },
-              { type: 'perf', release: 'patch' },
-              { type: 'build', release: 'patch' },
-              // revert → зависит от оригинала, но обычно patch
-              { type: 'revert', release: 'patch' },
-              // major при ! или BREAKING CHANGE
-              { breaking: true, release: 'major' },
-              // Все остальные — без выпуска версии
-              { type: 'refactor', release: false },
-              { type: 'docs', release: false },
-              { type: 'style', release: false },
-              { type: 'test', release: false },
-              { type: 'ci', release: false },
-              { type: 'chore', release: false }
-            ],
-            parserOpts: {
-              noteKeywords: ['BREAKING CHANGE', 'BREAKING-CHANGE']
-            }
-          }
-        ],
-        [
-          '@semantic-release/release-notes-generator',
-          {
-            preset: 'conventionalcommits',
-            presetConfig: {
-              types: [
-                { type: 'feat', section: '✨ Features', hidden: false },
-                { type: 'fix', section: '🐛 Bug Fixes', hidden: false },
-                { type: 'perf', section: '⚡ Performance', hidden: false },
-                { type: 'revert', section: '⏪ Reverts', hidden: false },
-                { type: 'refactor', section: '♻️ Code Refactoring', hidden: false },
-                { type: 'docs', section: '📚 Documentation', hidden: false },
-                { type: 'style', section: '🎨 Styles', hidden: false },
-                { type: 'test', section: '🧪 Tests', hidden: false },
-                { type: 'build', section: '📦 Build System', hidden: false },
-                { type: 'ci', section: '⚙️ CI/CD', hidden: false },
-                { type: 'chore', section: '🧹 Chores', hidden: false }
-              ]
-            },
-            writerOpts: {
-              commitPartial: `
-                {{#if note}}
-                ### ⚠ BREAKING CHANGES
-                {{note.title}}
-                {{note.body}}
-                {{/if}}
-
-                - {{#if scope}}**{{scope}}:** {{/if}}{{subject}}
-              `
-            }
-          }
-        ]
-      ]
-    };
-    EOL
-
-      # Запуск semantic-release с кастомным конфигом
+      # Запуск semantic-release и сохранение результатов
       - name: Semantic Release
-        uses: docker://ghcr.io/zeke/semantic-release:latest
+        id: semantic_release
+        run: |
+          npx semantic-release --dry-run=false \
+            --plugins="@semantic-release/commit-analyzer,@semantic-release/release-notes-generator" \
+            --branches=main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          args: '--config release.config.js'
 
-      # Создание релиза с кастомным описанием и информацией о PR
+      # Создание GitHub Release с кастомным описанием
       - name: Create Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(steps.semantic-release.outputs.new-release-version, 'v')
+        if: startsWith(steps.semantic_release.outputs.newReleaseVersion, 'v')
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
@@ -115,10 +47,9 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           echo "Собираем кастомное описание релиза..."
-          # Получаем текущее время в формате ISO 8601 (UTC)
           CURRENT_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
           cat << EOL > release-body.md
-          ${{ steps.semantic-release.outputs.new-release-notes }}
+          ${steps.semantic_release.outputs.newReleaseNotes}
 
           ---
 
@@ -141,7 +72,7 @@ jobs:
           #release #automation
           EOL
         with:
-          tag_name: ${{ steps.semantic-release.outputs.new-release-version }}
-          name: Release ${{ steps.semantic-release.outputs.new-release-version }}
+          tag_name: ${{ steps.semantic_release.outputs.newReleaseVersion }}
+          name: Release ${{ steps.semantic_release.outputs.newReleaseVersion }}
           body_path: release-body.md
-          prerelease: ${{ contains(steps.semantic-release.outputs.new-release-version, '-') }}
+          prerelease: ${{ contains(steps.semantic_release.outputs.newReleaseVersion, '-') }}
