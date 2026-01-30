@@ -40,7 +40,7 @@ class DeclensionsTest extends TestCase
         $this->assertEquals($expected, $result);
     }
 
-    public function declensionDataProvider(): array
+    public static function declensionDataProvider(): array
     {
         return [
             // Тесты для типа 'message'

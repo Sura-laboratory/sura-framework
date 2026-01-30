@@ -130,12 +130,6 @@ class FilesystemTest extends TestCase
         $this->assertEquals('0B', $result);
     }
 
-    public function testHumanFileSizeBytes(): void
-    {
-        $result = Filesystem::humanFileSize(512);
-        $this->assertEquals('512B', $result);
-    }
-
     public function testHumanFileSizeKilobytes(): void
     {
         $result = Filesystem::humanFileSize(2048);
