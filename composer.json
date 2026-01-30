@@ -1,6 +1,6 @@
 {
   "name": "sura/framework",
-  "description": "System parts",
+  "description": "System parts, framework",
   "keywords": ["support"],
   "license": "MIT",
   "type": "library",
