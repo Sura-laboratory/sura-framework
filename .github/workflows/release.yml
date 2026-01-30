@@ -3,9 +3,9 @@
 on:
   pull_request:
     types: [closed]
-    branches: [main]
+    branches: [main1]
   push:
-    branches: [master]
+    branches: [main]
 
 permissions:
   contents: write    # нужно для создания тега и релиза
