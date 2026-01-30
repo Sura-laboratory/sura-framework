@@ -4,6 +4,15 @@
   "keywords": ["support"],
   "license": "MIT",
   "type": "library",
+  "scripts": {
+    "post-version": [
+      "@php scripts/versioning.php"
+    ]
+  },
+  "extra": {
+    "branch-alias": {
+      "dev-main": "2.0-dev"
+    },
   "require": {
     "php": "^8.4 || ^8.5",
     "ext-iconv": "*",

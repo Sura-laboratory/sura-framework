@@ -43,36 +43,26 @@ class Declensions
      */
     final public function makeWord(int $num, string $type): string
     {
-        $str_len_num = strlen((string)$num);
-        if ($str_len_num === 2) {
-            $parse_num = substr((string)$num, 1, 2);
-            $num = (int)str_replace('0', '10', $parse_num);
-        } elseif ($str_len_num === 3) {
-            $parse_num = substr((string)$num, 2, 3);
-            $num = (int)str_replace('0', '10', $parse_num);
-        } elseif ($str_len_num === 4) {
-            $parse_num = substr((string)$num, 3, 4);
-            $num = (int)str_replace('0', '10', $parse_num);
-        } elseif ($str_len_num === 5) {
-            $parse_num = substr((string)$num, 4, 5);
-            $num = (int)str_replace('0', '10', $parse_num);
+        if (!isset($this->declensions[$type])) {
+            return '';
         }
 
-        if ($num === 0) {
-            return $this->declensions[$type][0];
+        $forms = $this->declensions[$type];
+
+        // Проверяем последние две цифры
+        $n = $num % 100;
+        if ($n >= 11 && $n <= 19) {
+            return $forms[3]; // для 11–19: "сообщений"
         }
-        if ($num === 1) {
-            return $this->declensions[$type][1];
+
+        // Последняя цифра
+        $n = $num % 10;
+        if ($n == 1) {
+            return $forms[1]; // 1 → "сообщение"
+        } elseif ($n >= 2 && $n <= 4) {
+            return $forms[2]; // 2–4 → "сообщения"
+        } else {
+            return $forms[3]; // 0,5–9, а также 11–19 → "сообщений"
         }
-        if ($num < 5) {
-            return $this->declensions[$type][2];
-        }
-        if ($num < 21) {
-            return $this->declensions[$type][3];
-        }
-        if ($num === 21) {
-            return $this->declensions[$type][4];
-        }
-        return '';
     }
 }
