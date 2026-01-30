@@ -27,45 +27,74 @@ jobs:
           npm install --save-dev semantic-release @semantic-release/commit-analyzer @semantic-release/release-notes-generator
 
       # Создание кастомного конфига с группировкой по типам
-      - name: Create release config
-        run: |
-          cat > release.config.js << 'EOL'
-          module.exports = {
-            plugins: [
-              '@semantic-release/commit-analyzer',
-              ['@semantic-release/release-notes-generator', {
-                preset: 'conventionalcommits',
-                presetConfig: {
-                  types: [
-                    { type: 'feat', section: '✨ Features', hidden: false },
-                    { type: 'fix', section: '🐛 Bug Fixes', hidden: false },
-                    { type: 'perf', section: '⚡ Performance', hidden: false },
-                    { type: 'revert', section: '⏪ Reverts', hidden: false },
-                    { type: 'refactor', section: '♻️ Code Refactoring', hidden: false },
-                    { type: 'docs', section: '📚 Documentation', hidden: false },
-                    { type: 'style', section: '🎨 Styles', hidden: false },
-                    { type: 'test', section: '🧪 Tests', hidden: false },
-                    { type: 'build', section: '📦 Build System', hidden: false },
-                    { type: 'ci', section: '⚙️ CI/CD', hidden: false },
-                    { type: 'chore', section: '🧹 Chores', hidden: false }
-                  ]
-                },
-                writerOpts: {
-                  // Добавляем заголовок версии
-                  commitPartial: `
-                    {{#if note}}
-                    ### ⚠ BREAKING CHANGES
-                    {{note.title}}
-                    {{note.body}}
-                    {{/if}}
+- name: Create release config
+  run: |
+    cat > release.config.js << 'EOL'
+    module.exports = {
+      plugins: [
+        [
+          '@semantic-release/commit-analyzer',
+          {
+            preset: 'conventionalcommits',
+            releaseRules: [
+              // feat → minor
+              { type: 'feat', release: 'minor' },
+              // fix, perf, build → patch
+              { type: 'fix', release: 'patch' },
+              { type: 'perf', release: 'patch' },
+              { type: 'build', release: 'patch' },
+              // revert → зависит от оригинала, но обычно patch
+              { type: 'revert', release: 'patch' },
+              // major при ! или BREAKING CHANGE
+              { breaking: true, release: 'major' },
+              // Все остальные — без выпуска версии
+              { type: 'refactor', release: false },
+              { type: 'docs', release: false },
+              { type: 'style', release: false },
+              { type: 'test', release: false },
+              { type: 'ci', release: false },
+              { type: 'chore', release: false }
+            ],
+            parserOpts: {
+              noteKeywords: ['BREAKING CHANGE', 'BREAKING-CHANGE']
+            }
+          }
+        ],
+        [
+          '@semantic-release/release-notes-generator',
+          {
+            preset: 'conventionalcommits',
+            presetConfig: {
+              types: [
+                { type: 'feat', section: '✨ Features', hidden: false },
+                { type: 'fix', section: '🐛 Bug Fixes', hidden: false },
+                { type: 'perf', section: '⚡ Performance', hidden: false },
+                { type: 'revert', section: '⏪ Reverts', hidden: false },
+                { type: 'refactor', section: '♻️ Code Refactoring', hidden: false },
+                { type: 'docs', section: '📚 Documentation', hidden: false },
+                { type: 'style', section: '🎨 Styles', hidden: false },
+                { type: 'test', section: '🧪 Tests', hidden: false },
+                { type: 'build', section: '📦 Build System', hidden: false },
+                { type: 'ci', section: '⚙️ CI/CD', hidden: false },
+                { type: 'chore', section: '🧹 Chores', hidden: false }
+              ]
+            },
+            writerOpts: {
+              commitPartial: `
+                {{#if note}}
+                ### ⚠ BREAKING CHANGES
+                {{note.title}}
+                {{note.body}}
+                {{/if}}
 
-                    - {{#if scope}}**{{scope}}:** {{/if}}{{subject}}
-                  `
-                }
-              }]
-            ]
-          };
-          EOL
+                - {{#if scope}}**{{scope}}:** {{/if}}{{subject}}
+              `
+            }
+          }
+        ]
+      ]
+    };
+    EOL
 
       # Запуск semantic-release с кастомным конфигом
       - name: Semantic Release
