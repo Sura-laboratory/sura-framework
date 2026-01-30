@@ -8,7 +8,7 @@
  *
  */
 
-namespace Sura\Support;
+namespace Sura\Routing;
 
 use Error;
 
