@@ -1,5 +1,4 @@
-name: PHP Semantic Release by Labels
-
+name: PHP Semantic Release
 
 on:
   push:
