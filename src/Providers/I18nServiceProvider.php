@@ -14,7 +14,7 @@ class I18nServiceProvider implements ServiceProviderInterface
         // Транслятор
         $container->singleton('translator', function () {
             $locale = $this->detectLocale();
-            return new Translator($locale, __DIR__ . '/../../resources/lang');
+            return new Translator($locale, __DIR__ . '/../../../../../resources/lang');
         });
     }
 
@@ -28,7 +28,7 @@ class I18nServiceProvider implements ServiceProviderInterface
         // Проверяем сессию
         if (isset($_SESSION['locale'])) {
             $locale = $_SESSION['locale'];
-            $langs = require __DIR__ . '/../../config/langs.php';
+            $langs = require __DIR__ . '/../../../../../config/langs.php';
             if (array_key_exists($locale, $langs)) {
                 return $locale;
             }
@@ -37,7 +37,7 @@ class I18nServiceProvider implements ServiceProviderInterface
         // Проверяем HTTP_ACCEPT_LANGUAGE
         if (isset($_SERVER['HTTP_ACCEPT_LANGUAGE'])) {
             $lang = substr($_SERVER['HTTP_ACCEPT_LANGUAGE'], 0, 2);
-            $langs = require __DIR__ . '/../../config/langs.php';
+            $langs = require __DIR__ . '/../../../../../config/langs.php';
             if (array_key_exists($lang, $langs)) {
                 return $lang;
             }

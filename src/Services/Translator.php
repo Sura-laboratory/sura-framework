@@ -93,7 +93,7 @@ class Translator
     public function getLocaleName(): string
     {
         $lang = $this->locale;
-        $langs = require __DIR__ . '/../../config/langs.php';
+        $langs = require __DIR__ . '/../../../../../config/langs.php';
 
         if (array_key_exists($lang, $langs)) {
             return $langs[$lang]['name'];
