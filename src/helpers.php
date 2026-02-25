@@ -63,6 +63,12 @@ function langDate(string $format, int $stamp): string
     return strtr(date($format, $stamp), $lang_date);
 }
 
+function trans(string $key, array $params = []): string
+{
+    $translator = \Sura\Container::getInstance()->get('translator');
+    return $translator->trans($key, $params);
+}
+
 /**
  * Очищает строку от HTML‑тегов, управляющих и нежелательных символов.
  *
@@ -92,23 +98,6 @@ function strip_data(string $text): string
      * @var array<int,string> $replace
      */
     return str_replace($search, $replace, $text);
-}
-
-/**
- * Формирует HTML \<option\> список и отмечает опцию с указанным id как selected.
- *
- * @param string $id Значение опции, которую необходимо пометить как selected
- * @param array $list Ассоциативный массив value => label
- * @return string Сформированный HTML код опций
- * @since 4.0
- */
-function addToList(string $id, array $list): string
-{
-    $options = '';
-    foreach ($list as $key => $value) {
-        $options .= '<option value="' . $key . '">' . $value . '</option>';
-    }
-    return str_replace('value="' . $id . '"', 'value="' . $id . '" selected', $options);
 }
 
 /**

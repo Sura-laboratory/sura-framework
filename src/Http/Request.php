@@ -1,112 +1,191 @@
 <?php
-
-/*
- * Copyright (c) 2023 Sura
- *
- *  For the full copyright and license information, please view the LICENSE
- *   file that was distributed with this source code.
- *
- */
-
 namespace Sura\Http;
 
 /**
- * Класс для работы с входящими HTTP‑данными запроса.
- *
- * Предоставляет утилиты для фильтрации строковых значений, приведения к целому
- * и проверки AJAX‑запросов. Методы читают значения из глобальных массивов
- * \$_POST и \$_GET по имени поля.
+ * Класс для представления HTTP-запроса
+ * 
+ * Содержит всю информацию о входящем HTTP-запросе: метод, путь, параметры,
+ * заголовки, данные формы и атрибуты маршрута.
  */
+use Sura\Http\UserAgent;
+
 class Request
 {
+    private ?UserAgent $userAgent = null;
+    public string $method;           // HTTP-метод запроса (GET, POST, PUT и т.д.)
+    public string $path;              // Путь запроса без параметров
+    public array $query = [];         // GET-параметры из строки запроса
+    public array $post = [];          // POST-данные формы
+    public array $server = [];        // Данные из $_SERVER
+    public array $headers = [];       // HTTP-заголовки запроса
+    public array $attributes = [];    // Атрибуты запроса (параметры маршрута и др.)
+    public array $files = []; // Данные о загруженных файлах из $_FILES
+
     /**
-     * Фильтр для входных данных по имени поля.
+     * Конструктор объекта запроса
      *
-     * Если значение в \$_POST с указанным именем присутствует, используется оно.
-     * В противном случае проверяется \$_GET. Если в \$_GET значение — массив,
-     * для безопасности возвращается пустая строка.
-     * Результат дополнительно обрабатывается методом `textFilter`.
+     * Инициализирует объект Request с данными. Если параметры не переданы,
+     * используются глобальные суперглобальные переменные PHP.
      *
-     * @param string $source Имя поля во входных данных (\$_POST или \$_GET)
-     * @param int $substr_num Максимальная длина возвращаемой строки (по умолчанию 25000)
-     * @param bool $strip_tags Если true — сначала будет применена функция `strip_tags`
-     * @return string Отфильтрованное значение или пустая строка, если поле не найдено
+     * @param array|null $server Данные из $_SERVER
+     * @param array|null $get GET-параметры
+     * @param array|null $post POST-данные
+     * @param array|null $headers HTTP-заголовки
      */
-    public function filter(string $source, int $substr_num = 25000, bool $strip_tags = false): string
+    public function __construct(
+        ?array $server = null,
+        ?array $get = null,
+        ?array $post = null,
+        // ?array $headers = null,
+        ?array $files = null
+        ) {
+        $server = $server ?? $_SERVER;
+        $this->server = $server;
+        $this->method = $server['REQUEST_METHOD'] ?? 'GET';
+        $uri = $server['REQUEST_URI'] ?? '/';
+        $this->path = parse_url($uri, PHP_URL_PATH) ?: '/';
+        $this->query = $get ?? $_GET;
+        $this->post = $post ?? $_POST;
+        $this->files = $files ?? $_FILES;
+        // $this->headers = $headers ?? $this->parseHeaders();
+        // $this->userAgent = new UserAgent($this->headers['User-Agent'] ?? null);
+    }
+
+    /**
+     * Проверить, были ли в запросе загруженные файлы
+     *
+     * @return bool true, если есть загруженные файлы, иначе false
+     */
+    public function hasFile(string $key): bool
     {
-        if (empty($source)) {
-            return '';
+        $file = $this->files[$key] ?? null;
+        if (!$file) {
+            return false;
         }
-        if (!empty($_POST[$source])) {
-            $source = $_POST[$source];
-        } elseif (!empty($_GET[$source])) {
-            if (is_array($_GET[$source])) {
-                return '';
+        if (is_array($file['tmp_name'])) {
+            return !empty(array_filter($file['tmp_name']));
+        }
+        return !empty($file['tmp_name']);
+    }  
+
+    /**
+     * Получить информацию о загруженном файле по имени поля
+     *
+     * @param string $key Имя поля файла (как в HTML-форме)
+     * @return array|null Массив с информацией о файле или null, если не найден
+     */
+    public function getFile(string $key): ?array
+    {
+        return $this->files[$key] ?? null;
+    }
+
+    /**
+     * Получить объект UserAgent для определения типа устройства
+     *
+     * @return UserAgent Объект для работы с User-Agent
+     */
+    public function userAgent(): UserAgent
+    {
+        return $this->userAgent;
+    }
+
+
+    /**
+     * Разобрать HTTP-заголовки из суперглобальной переменной $_SERVER
+     *
+     * Извлекает HTTP-заголовки из массива $_SERVER, преобразуя ключи
+     * в читаемый формат (например, HTTP_CONTENT_TYPE -> Content-Type)
+     *
+     * @return array Массив HTTP-заголовков
+     */
+    protected function parseHeaders(): array
+    {
+        $headers = [];
+        foreach ($this->server as $k => $v) {
+            if (str_starts_with($k, 'HTTP_')) {
+                $name = str_replace(' ', '-', ucwords(strtolower(str_replace('_', ' ', substr($k, 5)))));
+                $headers[$name] = $v;
             }
-            $source = $_GET[$source];
-        } else {
-            return '';
         }
-        return $this->textFilter($source, $substr_num, $strip_tags);
+        return $headers;
     }
 
     /**
-     * Базовая строковая фильтрация.
+     * Вернуть новый экземпляр с добавленным атрибутом
      *
-     * Обрезает строку до указанной длины, опционально удаляет HTML‑теги,
-     * удаляет экранирующие слеши, заменяет переводы строк на `<br>` и
-     * экранирует специальные HTML‑символы.
+     * Создает клон текущего объекта и добавляет к нему указанный атрибут.
+     * Используется для иммутабельного добавления данных в запрос.
      *
-     * @param string $input_text Входной текст
-     * @param int $substr_num Максимальная длина строки
-     * @param bool $strip_tags Удалять ли HTML‑теги перед остальной фильтрацией
-     * @return string Отфильтрованный и безопасный для вывода HTML текст
+     * @param string $key Ключ атрибута
+     * @param mixed $value Значение атрибута
+     * @return self Новый экземпляр Request с добавленным атрибутом
      */
-    public function textFilter(string $input_text, int $substr_num = 25000, bool $strip_tags = false): string
+    public function withAttribute(string $key, mixed $value): self
     {
-        $input_text = substr($input_text, 0, $substr_num);
-        if (empty($input_text)) {
-            return '';
-        }
-        if ($strip_tags) {
-            $input_text = strip_tags($input_text);
-        }
-        $input_text = trim($input_text);
-        $input_text = stripslashes($input_text);
-        $input_text = str_replace(PHP_EOL, '<br>', $input_text);
-        return htmlspecialchars($input_text, ENT_QUOTES);
+        $clone = clone $this;
+        $clone->attributes[$key] = $value;
+        return $clone;
     }
 
     /**
-     * Приведение входного поля к целому числу.
+     * Получить значение атрибута по ключу
      *
-     * Проверяет сначала \$_POST, затем \$_GET. Если поле отсутствует — возвращает значение по умолчанию.
+     * Возвращает значение атрибута по указанному ключу.
+     * Если атрибут не найден, возвращает значение по умолчанию.
      *
-     * @param string $source Имя поля во входных данных
-     * @param int $default З��ачение по умолчанию, возвращаемое при отсутствии поля
-     * @return int Целое значение из входных данных или значение по умолчанию
+     * @param string $key Ключ атрибута
+     * @param mixed $default Значение по умолчанию, если атрибут не найден
+     * @return mixed Значение атрибута или значение по умолчанию
      */
-    public function int(string $source, int $default = 0): int
+    public function getAttribute(string $key, $default = null): mixed
     {
-        if (isset($_POST[$source])) {
-            $source = $_POST[$source];
-        } elseif (isset($_GET[$source])) {
-            $source = $_GET[$source];
-        } else {
-            return $default;
-        }
-        return (int)$source;
+        return $this->attributes[$key] ?? $default;
     }
 
     /**
-     * Проверка, является ли запрос AJAX.
+     * Проверить, является ли запрос AJAX-запросом
      *
-     * Метод проверяет наличие в \$_POST параметра `ajax` со значением `yes`.
+     * Определяет, является ли запрос асинхронным (AJAX) по наличию
+     * специального флага в POST-данных или JSON-запросе.
      *
-     * @return bool true, если это AJAX‑запрос, иначе false
+     * @return bool true, если запрос является AJAX, иначе false
      */
-    public function checkAjax(): bool
+    public function isAjax(): bool
     {
-        return !empty($_POST['ajax']) && $_POST['ajax'] === 'yes';
+        // var_dump($this->post);
+
+        $json = file_get_contents('php://input');
+        $data = json_decode($json, true);
+        if (isset($data['ajax'])) {
+           return true;
+        }
+        return isset($this->post['ajax']) && $this->post['ajax'] === 'yes';
     }
+    
+    /**
+     * Получить входные данные запроса в формате JSON
+     *
+     * Читает тело запроса и декодирует JSON-данные.
+     * Используется для получения данных из AJAX-запросов и API.
+     *
+     * @throws \JsonException При ошибках декодирования JSON
+     */
+    public function input($name)
+    {
+        $data = json_decode(file_get_contents('php://input'), true, 512, JSON_THROW_ON_ERROR);
+        return $data[$name] ?? null;
+    }
+
+    /**
+     * Проверить, является ли запрос POST-запросом
+     *
+     * Определяет, содержит ли запрос данные POST (отправленные формы и т.д.)
+     *
+     * @return bool true, если запрос содержит POST-данные, иначе false
+     */
+    public function isPost(): bool
+    {
+        return (bool)$this->post;
+    }
+    
 }
