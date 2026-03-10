@@ -44,6 +44,7 @@ class AuthServiceProvider implements ServiceProviderInterface
             $auth->getUser(); // Загружаем пользователя
             $user = $auth->user;
             if ($user) {
+                $auth->updateLastActivity();
                 return; // Успешно восстановлен из сессии
             }
         }

@@ -90,6 +90,20 @@ class AuthService
         return $user;
     }
 
+    public function updateLastActivity()
+    {
+        $user = $this->user;
+        $targetDate = $user['updated_at'];
+        $targetDateTime = new \DateTime($targetDate);
+        $currentDateTime = new \DateTime();
+        $difference = $currentDateTime->getTimestamp() - $targetDateTime->getTimestamp();
+        if ($difference >= 60) {
+            $db = Container::getInstance()->get('db.query');
+            $sql = "UPDATE users SET updated_at = ? WHERE user_id = ?";
+            $db->execute($sql, [date('Y-m-d H:i:s'), $user['user_id']]);
+        }
+    }
+
     /**
      * Получает информацию о пользователе по его ID.
      * Проверяет, существует ли пользователь в базе данных, и возвращает его данные.

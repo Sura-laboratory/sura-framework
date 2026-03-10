@@ -41,7 +41,7 @@ use mysqli_result;
 // }
 class QueryBuilder
 {
-    private string $logFile = __DIR__ . '/../../storage/logs/sql.log';
+    private string $logFile = __DIR__ . '/../../../../storage/logs/sql.log';
 
     private mysqli $connection;
 
@@ -206,13 +206,58 @@ class QueryBuilder
 
     private function logQuery(string $sql, array $params = []): void
     {
+        $logFile = $this->logFile;
+        $maxFileSize = 2 * 1024 * 1024; // 10 МБ
+        $backupCount = 3; // Храним до 3 архивных файлов: .1, .2, .3
+
+        // Проверяем, существует ли файл и не превышает ли он лимит
+        if (file_exists($logFile) && filesize($logFile) >= $maxFileSize) {
+            // Удаляем самый старый бэкап, если он есть
+            $oldBackup = "{$logFile}.{$backupCount}";
+            if (file_exists($oldBackup)) {
+                @unlink($oldBackup);
+            }
+
+            // Сдвигаем существующие архивы: .2 → .3, .1 → .2
+            for ($i = $backupCount - 1; $i >= 1; $i--) {
+                $from = $logFile . '.' . $i;
+                $to = $logFile . '.' . $i + 1;
+                if (file_exists($from)) {
+                    @rename($from, $to);
+                }
+            }
+
+            // Переименовываем текущий лог в .1
+            @rename($logFile, "{$logFile}.1");
+        }
+
+        // Формируем строку запроса с подставленными параметрами
         $query = $sql;
-        if (!empty($params)) {
-            foreach ($params as $param) {
-                $query = preg_replace('/\?/', "'".addslashes($param)."'", $query, 1);
+        $params = array_values($params);
+
+        foreach ($params as $param) {
+            if ($param === null) {
+                $value = 'NULL';
+            } elseif (is_int($param) || is_float($param)) {
+                $value = $param;
+            } elseif (is_bool($param)) {
+                $value = $param ? 'TRUE' : 'FALSE';
+            } else {
+                $value = "'" . addslashes((string)$param) . "'";
+            }
+
+            $pos = strpos($query, '?');
+            if ($pos !== false) {
+                $query = substr_replace($query, $value, $pos, 1);
+            } else {
+                break; // Защита от лишних замен
             }
         }
+
         $time = date('Y-m-d H:i:s');
-        file_put_contents($this->logFile, "[$time] $query\n", FILE_APPEND | LOCK_EX);
+        $line = "[$time] $query\n";
+
+        // Записываем строку в файл
+        file_put_contents($logFile, $line, FILE_APPEND | LOCK_EX);
     }
 }
